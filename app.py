@@ -18,6 +18,8 @@ try:
     ENTREZ_EMAIL = st.secrets["ENTREZ_EMAIL"]
     ENTREZ_API_KEY = st.secrets["ENTREZ_API_KEY"]
     GEMINI_API_KEY = st.secrets["GEMINI_API_KEY"]
+    # Admin Password for sharing
+    ADMIN_PASSWORD = st.secrets.get("ADMIN_PASSWORD", "research2026")
     # Optional for saving settings back to GitHub
     GITHUB_TOKEN = st.secrets.get("GITHUB_TOKEN")
     GITHUB_REPO = st.secrets.get("GITHUB_REPO") # format: "username/repo"
@@ -221,18 +223,36 @@ if 'analyzed_papers' not in st.session_state:
         st.session_state.analyzed_papers = []
 
 with st.sidebar:
-    st.header("Search Parameters")
-    search_query = st.text_area("Search Query", value=current_config['search_query'])
-    days_back = st.slider("Days Back", 1, 30, current_config['days_back'])
-    max_results = st.slider("Max Results", 1, 20, current_config['max_results'])
+    st.header("Admin Controls")
+    password_input = st.text_input("Enter Admin Password to modify settings", type="password")
     
-    col_fetch, col_save = st.columns(2)
-    with col_fetch:
-        fetch_button = st.button("Fetch Now", type="primary", use_container_width=True)
-    with col_save:
-        save_button = st.button("Set as Default", use_container_width=True, help="Saves these settings for the Sunday night automated fetch.")
+    is_admin = (password_input == ADMIN_PASSWORD)
+    
+    if is_admin:
+        st.success("Admin Access Granted")
+        st.divider()
+        st.header("Search Parameters")
+        search_query = st.text_area("Search Query", value=current_config['search_query'])
+        days_back = st.slider("Days Back", 1, 30, current_config['days_back'])
+        max_results = st.slider("Max Results", 1, 20, current_config['max_results'])
+        
+        col_fetch, col_save = st.columns(2)
+        with col_fetch:
+            fetch_button = st.button("Fetch Now", type="primary", use_container_width=True)
+        with col_save:
+            save_button = st.button("Set as Default", use_container_width=True, help="Saves these settings for the Sunday night automated fetch.")
+    else:
+        if password_input:
+            st.error("Incorrect Password")
+        st.info("The app is currently in **Read-Only Mode**. Only the latest automated results are shown below.")
+        # Define defaults so the rest of the script doesn't break
+        search_query = current_config['search_query']
+        days_back = current_config['days_back']
+        max_results = current_config['max_results']
+        fetch_button = False
+        save_button = False
 
-if save_button:
+if is_admin and save_button:
     new_config = {
         "search_query": search_query,
         "days_back": days_back,
