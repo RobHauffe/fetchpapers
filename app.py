@@ -165,6 +165,10 @@ def create_pdf(paper_details):
 st.title("🔬 PubMed Research Assistant")
 st.markdown("Fetch the latest research and get AI-powered summaries instantly.")
 
+# Initialize session state for papers
+if 'analyzed_papers' not in st.session_state:
+    st.session_state.analyzed_papers = []
+
 with st.sidebar:
     st.header("Search Parameters")
     search_query = st.text_area("Search Query", value='(("Adipose Tissue"[Title/Abstract] OR "Adipocytes"[Title/Abstract]) AND "Obesity"[Title/Abstract]) AND hasabstract[text]')
@@ -181,41 +185,46 @@ if fetch_button:
             papers = fetch_details(ids)
             
         if papers:
-            analyzed_papers = []
+            st.session_state.analyzed_papers = [] # Reset on new search
             for i, paper in enumerate(papers):
                 with st.status(f"Analyzing Paper {i+1}/{len(papers)}...", expanded=True) as status:
                     st.write(f"**Title:** {paper['title']}")
                     analysis = analyze_abstract_with_retry(paper['abstract'])
                     paper['analysis'] = analysis
-                    analyzed_papers.append(paper)
+                    st.session_state.analyzed_papers.append(paper)
                     status.update(label=f"Analysis Complete for Paper {i+1}", state="complete")
             
             st.success("All papers analyzed!")
-            
-            # Download PDF Button
-            pdf_data = create_pdf(analyzed_papers)
-            st.download_button(
-                label="📥 Download Results as PDF",
-                data=pdf_data,
-                file_name=f"fetchedpapers_{datetime.now().strftime('%Y%m%d')}.pdf",
-                mime="application/pdf"
-            )
-            
-            # Display Cards
-            st.divider()
-            for paper in analyzed_papers:
-                with st.container(border=True):
-                    st.subheader(paper['title'])
-                    col1, col2 = st.columns([1, 4])
-                    with col1:
-                        st.caption(f"**Journal:**\n{paper['journal']}")
-                        if paper['link']:
-                            st.link_button("View Paper", paper['link'])
-                    with col2:
-                        st.markdown("**AI Summary:**")
-                        st.write(paper['analysis'])
-                    
-                    with st.expander("Show Original Abstract"):
-                        st.write(paper['abstract'])
     else:
         st.warning("No papers found matching your criteria.")
+
+# Display results if they exist in session state
+if st.session_state.analyzed_papers:
+    # Download PDF Button
+    # Note: We create the PDF content as a byte string for the download button
+    pdf_output = create_pdf(st.session_state.analyzed_papers)
+    pdf_bytes = bytes(pdf_output)
+    
+    st.download_button(
+        label="📥 Download Results as PDF",
+        data=pdf_bytes,
+        file_name=f"fetchedpapers_{datetime.now().strftime('%Y%m%d')}.pdf",
+        mime="application/pdf"
+    )
+    
+    # Display Cards
+    st.divider()
+    for paper in st.session_state.analyzed_papers:
+        with st.container(border=True):
+            st.subheader(paper['title'])
+            col1, col2 = st.columns([1, 4])
+            with col1:
+                st.caption(f"**Journal:**\n{paper['journal']}")
+                if paper['link']:
+                    st.link_button("View Paper", paper['link'])
+            with col2:
+                st.markdown("**AI Summary:**")
+                st.write(paper['analysis'])
+            
+            with st.expander("Show Original Abstract"):
+                st.write(paper['abstract'])
