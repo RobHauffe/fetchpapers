@@ -10,6 +10,17 @@ ENTREZ_EMAIL = os.getenv("ENTREZ_EMAIL")
 ENTREZ_API_KEY = os.getenv("ENTREZ_API_KEY")
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 
+# Safety check for environment variables
+missing_vars = []
+if not ENTREZ_EMAIL: missing_vars.append("ENTREZ_EMAIL")
+if not ENTREZ_API_KEY: missing_vars.append("ENTREZ_API_KEY")
+if not GEMINI_API_KEY: missing_vars.append("GEMINI_API_KEY")
+
+if missing_vars:
+    print(f"ERROR: Missing environment variables: {', '.join(missing_vars)}")
+    print("Please ensure these are set in GitHub Repository Secrets (Settings > Secrets and variables > Actions).")
+    exit(1)
+
 Entrez.email = ENTREZ_EMAIL
 Entrez.api_key = ENTREZ_API_KEY
 client = genai.Client(api_key=GEMINI_API_KEY)
