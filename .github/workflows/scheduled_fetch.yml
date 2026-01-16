@@ -1,0 +1,38 @@
+name: Scheduled Literature Fetch
+
+on:
+  schedule:
+    # 22:30 UTC is 23:30 German time (Winter)
+    - cron: '30 22 * * 0'
+  workflow_dispatch: # Allows manual trigger from GitHub UI
+
+jobs:
+  fetch_and_analyze:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Set up Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.11'
+
+      - name: Install dependencies
+        run: |
+          pip install -r requirements.txt
+
+      - name: Run Fetcher
+        env:
+          ENTREZ_EMAIL: ${{ secrets.ENTREZ_EMAIL }}
+          ENTREZ_API_KEY: ${{ secrets.ENTREZ_API_KEY }}
+          GEMINI_API_KEY: ${{ secrets.GEMINI_API_KEY }}
+        run: python cron_fetch.py
+
+      - name: Commit and Push results
+        run: |
+          git config --global user.name "GitHub Action"
+          git config --global user.email "action@github.com"
+          git add results.json
+          git commit -m "Automated Sunday Night Fetch: $(date)" || exit 0
+          git push
