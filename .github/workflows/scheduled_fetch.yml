@@ -9,6 +9,8 @@ on:
 jobs:
   fetch_and_analyze:
     runs-on: ubuntu-latest
+    permissions:
+      contents: write  # Give the action permission to push changes
     steps:
       - name: Checkout code
         uses: actions/checkout@v3
