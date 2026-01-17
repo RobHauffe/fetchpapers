@@ -288,20 +288,28 @@ with st.sidebar:
         set_names = [s['name'] for s in st.session_state.config['search_sets']]
         selected_set_name = st.selectbox("Select Search Set to Edit", ["+ Add New Set"] + set_names)
         
+        st.divider() # Added divider for clarity
+        
         if selected_set_name == "+ Add New Set":
             new_set_name = st.text_input("New Set Name", placeholder="e.g. Redox Regulation")
-            if st.button("Create Set"):
-                if new_set_name:
-                    new_id = new_set_name.lower().replace(" ", "_")
-                    st.session_state.config['search_sets'].append({
-                        "id": new_id,
-                        "name": new_set_name,
-                        "query": "",
-                        "days_back": 7,
-                        "max_results": 5,
-                        "schedule_day": "Sunday"
-                    })
-                    st.rerun()
+                if st.button("Create Set", use_container_width=True):
+                    if new_set_name:
+                        new_id = new_set_name.lower().replace(" ", "_")
+                        st.session_state.config['search_sets'].append({
+                            "id": new_id,
+                            "name": new_set_name,
+                            "query": "",
+                            "days_back": 7,
+                            "max_results": 5,
+                            "schedule_day": "Sunday"
+                        })
+                        # Save to GitHub immediately so it persists on reload
+                        if save_config_to_github(st.session_state.config):
+                            st.success(f"Set '{new_set_name}' created and saved!")
+                            time.sleep(1)
+                            st.rerun()
+                        else:
+                            st.error("Set created in session, but failed to save to GitHub.")
         else:
             # Edit existing set
             s_set = next(s for s in st.session_state.config['search_sets'] if s['name'] == selected_set_name)
@@ -346,6 +354,7 @@ with st.sidebar:
                     if new_text:
                         builder_terms.append({"text": new_text, "operator": new_op, "field": new_fi})
                         s_set['query'] = build_pubmed_query(builder_terms)
+                        # Clear text input after adding
                         st.rerun()
             
             s_set['query'] = st.text_area("Final PubMed Query", value=s_set['query'], help="You can also manually edit this.")
@@ -363,9 +372,14 @@ with st.sidebar:
             with col_save:
                 save_button = st.button("Save Config", use_container_width=True)
                 
-            if st.button("Delete Set", type="secondary"):
+            if st.button("Delete Set", type="secondary", use_container_width=True):
                 st.session_state.config['search_sets'] = [s for s in st.session_state.config['search_sets'] if s['id'] != s_set['id']]
-                st.rerun()
+                if save_config_to_github(st.session_state.config):
+                    st.success("Set deleted and config updated!")
+                    time.sleep(1)
+                    st.rerun()
+                else:
+                    st.error("Deleted from session, but failed to update GitHub.")
     else:
         if password_input:
             st.error("Incorrect Password")
