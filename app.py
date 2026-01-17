@@ -275,6 +275,8 @@ with st.sidebar:
     st.header("Admin Controls")
     password_input = st.text_input("Enter Admin Password to modify settings", type="password")
     is_admin = (password_input == ADMIN_PASSWORD)
+    fetch_button = False
+    save_button = False
     
     if is_admin:
         st.success("Admin Access Granted")
@@ -368,8 +370,6 @@ with st.sidebar:
         if password_input:
             st.error("Incorrect Password")
         st.info("The app is currently in **Read-Only Mode**. Select a research topic below to view the latest results.")
-        fetch_button = False
-        save_button = False
 
 # --- MAIN AREA ---
 
