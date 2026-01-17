@@ -35,13 +35,66 @@ except Exception as e:
 def load_config():
     try:
         with open("config.json", "r") as f:
-            return json.load(f)
+            config = json.load(f)
+            # Migration for old config format
+            if "search_query" in config:
+                return {
+                    "search_sets": [
+                        {
+                            "id": "default",
+                            "name": "Default Set",
+                            "query": config["search_query"],
+                            "days_back": config.get("days_back", 7),
+                            "max_results": config.get("max_results", 5),
+                            "schedule_day": "Sunday"
+                        }
+                    ]
+                }
+            return config
     except:
         return {
-            "search_query": '(("Adipose Tissue"[Title/Abstract] OR "Adipocytes"[Title/Abstract]) AND "Obesity"[Title/Abstract]) AND hasabstract[text]',
-            "days_back": 7,
-            "max_results": 5
+            "search_sets": [
+                {
+                    "id": "adipose_obesity",
+                    "name": "Adipose Tissue in Obesity",
+                    "query": "((\"Adipose Tissue\"[Title/Abstract] OR \"Adipocytes\"[Title/Abstract]) AND \"Obesity\"[Title/Abstract]) AND hasabstract[text]",
+                    "days_back": 7,
+                    "max_results": 5,
+                    "schedule_day": "Sunday"
+                }
+            ]
         }
+
+def build_pubmed_query(terms):
+    """
+    Constructs a PubMed query string from a list of terms and operators.
+    Each term is a dict: {"text": "...", "operator": "AND/OR/NOT", "field": "Title/Abstract/None"}
+    """
+    if not terms:
+        return ""
+    
+    query = ""
+    for i, term in enumerate(terms):
+        text = term['text'].strip()
+        if not text: continue
+        
+        # Add quotes if multi-word
+        if " " in text and not text.startswith('"'):
+            text = f'"{text}"'
+            
+        field_suffix = f"[{term['field']}]" if term['field'] != "None" else ""
+        
+        if i == 0:
+            query = f"{text}{field_suffix}"
+        else:
+            op = term.get('operator', 'AND')
+            query = f"({query} {op} {text}{field_suffix})"
+            
+    # Always ensure it has an abstract
+    if "hasabstract[text]" not in query:
+        query = f"({query}) AND hasabstract[text]"
+        
+    return query
 
 # Save config to GitHub (since Streamlit Cloud is read-only)
 def save_config_to_github(new_config):
@@ -210,108 +263,206 @@ st.title("🔬 PubMed Research Assistant")
 st.markdown("Fetch the latest research and get AI-powered summaries instantly.")
 
 # Load initial config
-current_config = load_config()
+if 'config' not in st.session_state:
+    st.session_state.config = load_config()
 
 # Initialize session state for papers
 if 'analyzed_papers' not in st.session_state:
-    # Try to load last automated results
-    try:
-        with open("results.json", "r") as f:
-            st.session_state.analyzed_papers = json.load(f)
-            st.info(f"Loaded {len(st.session_state.analyzed_papers)} papers from the last automated fetch.")
-    except:
-        st.session_state.analyzed_papers = []
+    st.session_state.analyzed_papers = {} # Store as {set_id: [papers]}
 
+# Sidebar for Admin and Configuration
 with st.sidebar:
     st.header("Admin Controls")
     password_input = st.text_input("Enter Admin Password to modify settings", type="password")
-    
     is_admin = (password_input == ADMIN_PASSWORD)
     
     if is_admin:
         st.success("Admin Access Granted")
         st.divider()
-        st.header("Search Parameters")
-        search_query = st.text_area("Search Query", value=current_config['search_query'])
-        days_back = st.slider("Days Back", 1, 30, current_config['days_back'])
-        max_results = st.slider("Max Results", 1, 20, current_config['max_results'])
         
-        col_fetch, col_save = st.columns(2)
-        with col_fetch:
-            fetch_button = st.button("Fetch Now", type="primary", use_container_width=True)
-        with col_save:
-            save_button = st.button("Set as Default", use_container_width=True, help="Saves these settings for the Sunday night automated fetch.")
+        st.header("Search Set Management")
+        
+        # Select or Create Set
+        set_names = [s['name'] for s in st.session_state.config['search_sets']]
+        selected_set_name = st.selectbox("Select Search Set to Edit", ["+ Add New Set"] + set_names)
+        
+        if selected_set_name == "+ Add New Set":
+            new_set_name = st.text_input("New Set Name", placeholder="e.g. Redox Regulation")
+            if st.button("Create Set"):
+                if new_set_name:
+                    new_id = new_set_name.lower().replace(" ", "_")
+                    st.session_state.config['search_sets'].append({
+                        "id": new_id,
+                        "name": new_set_name,
+                        "query": "",
+                        "days_back": 7,
+                        "max_results": 5,
+                        "schedule_day": "Sunday"
+                    })
+                    st.rerun()
+        else:
+            # Edit existing set
+            s_set = next(s for s in st.session_state.config['search_sets'] if s['name'] == selected_set_name)
+            
+            s_set['name'] = st.text_input("Set Name", value=s_set['name'])
+            s_set['schedule_day'] = st.selectbox("Schedule Day", 
+                ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"],
+                index=["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"].index(s_set.get('schedule_day', 'Sunday')))
+            
+            st.divider()
+            st.subheader("Query Builder")
+            
+            # Simple Query Builder State
+            if f"builder_{s_set['id']}" not in st.session_state:
+                st.session_state[f"builder_{s_set['id']}"] = []
+                # Try to parse existing query if builder is empty? 
+                # (Complex, let's just allow manual editing or builder starting from scratch)
+            
+            builder_terms = st.session_state[f"builder_{s_set['id']}"]
+            
+            # Show current terms
+            for idx, term in enumerate(builder_terms):
+                col_t, col_o, col_f, col_d = st.columns([3, 2, 2, 1])
+                with col_t: st.text(term['text'])
+                with col_o: st.text(term['operator'] if idx > 0 else "-")
+                with col_f: st.text(term['field'])
+                with col_d: 
+                    if st.button("🗑️", key=f"del_{s_set['id']}_{idx}"):
+                        builder_terms.pop(idx)
+                        st.rerun()
+            
+            # Add new term
+            with st.container(border=True):
+                new_text = st.text_input("Keyword", key=f"key_{s_set['id']}")
+                col_op, col_fi = st.columns(2)
+                with col_op:
+                    new_op = st.selectbox("Operator", ["AND", "OR", "NOT"], key=f"op_{s_set['id']}")
+                with col_fi:
+                    new_fi = st.selectbox("Field", ["Title/Abstract", "Title", "Abstract", "None"], key=f"fi_{s_set['id']}")
+                
+                if st.button("Add Term", use_container_width=True):
+                    if new_text:
+                        builder_terms.append({"text": new_text, "operator": new_op, "field": new_fi})
+                        s_set['query'] = build_pubmed_query(builder_terms)
+                        st.rerun()
+            
+            s_set['query'] = st.text_area("Final PubMed Query", value=s_set['query'], help="You can also manually edit this.")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                s_set['days_back'] = st.number_input("Days Back", 1, 365, s_set['days_back'])
+            with col2:
+                s_set['max_results'] = st.number_input("Max Results", 1, 50, s_set['max_results'])
+            
+            st.divider()
+            col_fetch, col_save = st.columns(2)
+            with col_fetch:
+                fetch_button = st.button("Fetch Now", type="primary", use_container_width=True)
+            with col_save:
+                save_button = st.button("Save Config", use_container_width=True)
+                
+            if st.button("Delete Set", type="secondary"):
+                st.session_state.config['search_sets'] = [s for s in st.session_state.config['search_sets'] if s['id'] != s_set['id']]
+                st.rerun()
     else:
         if password_input:
             st.error("Incorrect Password")
-        st.info("The app is currently in **Read-Only Mode**. Only the latest automated results are shown below.")
-        # Define defaults so the rest of the script doesn't break
-        search_query = current_config['search_query']
-        days_back = current_config['days_back']
-        max_results = current_config['max_results']
+        st.info("The app is currently in **Read-Only Mode**. Select a research topic below to view the latest results.")
         fetch_button = False
         save_button = False
 
-if is_admin and save_button:
-    new_config = {
-        "search_query": search_query,
-        "days_back": days_back,
-        "max_results": max_results
-    }
-    if save_config_to_github(new_config):
-        st.sidebar.success("Settings saved! GitHub will use these on Sunday night.")
-    else:
-        st.sidebar.error("Could not save to GitHub. Check your secrets.")
+# --- MAIN AREA ---
 
-if fetch_button:
-    with st.spinner("Searching PubMed..."):
-        ids = search_pubmed(search_query, days_back, max_results)
+# If admin saved
+if is_admin and save_button:
+    if save_config_to_github(st.session_state.config):
+        st.sidebar.success("All settings saved to GitHub!")
+    else:
+        st.sidebar.error("Could not save to GitHub.")
+
+# If admin clicked fetch
+if is_admin and fetch_button:
+    # Use the selected set from the edit menu
+    s_set = next(s for s in st.session_state.config['search_sets'] if s['name'] == selected_set_name)
+    
+    with st.spinner(f"Searching PubMed for '{s_set['name']}'..."):
+        ids = search_pubmed(s_set['query'], s_set['days_back'], s_set['max_results'])
         
     if ids:
         with st.spinner(f"Fetching details for {len(ids)} papers..."):
             papers = fetch_details(ids)
             
         if papers:
-            st.session_state.analyzed_papers = [] # Reset on new search
+            st.session_state.analyzed_papers[s_set['id']] = [] # Reset this set
             for i, paper in enumerate(papers):
-                with st.status(f"Analyzing Paper {i+1}/{len(papers)}...", expanded=True) as status:
+                with st.status(f"Analyzing Paper {i+1}/{len(papers)}...", expanded=False) as status:
                     st.write(f"**Title:** {paper['title']}")
                     analysis = analyze_abstract_with_retry(paper['abstract'])
                     paper['analysis'] = analysis
-                    st.session_state.analyzed_papers.append(paper)
+                    st.session_state.analyzed_papers[s_set['id']].append(paper)
                     status.update(label=f"Analysis Complete for Paper {i+1}", state="complete")
             
-            st.success("All papers analyzed!")
+            st.success(f"Analysis for '{s_set['name']}' complete!")
     else:
         st.warning("No papers found matching your criteria.")
 
-# Display results if they exist in session state
-if st.session_state.analyzed_papers:
-    # Download PDF Button
-    # Note: We create the PDF content as a byte string for the download button
-    pdf_output = create_pdf(st.session_state.analyzed_papers)
-    pdf_bytes = bytes(pdf_output)
+# Display Results Selection
+available_sets = st.session_state.config['search_sets']
+if available_sets:
+    tabs = st.tabs([s['name'] for s in available_sets])
     
-    st.download_button(
-        label="📥 Download Results as PDF",
-        data=pdf_bytes,
-        file_name=f"fetchedpapers_{datetime.now().strftime('%Y%m%d')}.pdf",
-        mime="application/pdf"
-    )
-    
-    # Display Cards
-    st.divider()
-    for paper in st.session_state.analyzed_papers:
-        with st.container(border=True):
-            st.subheader(paper['title'])
-            col1, col2 = st.columns([1, 4])
-            with col1:
-                st.caption(f"**Journal:**\n{paper['journal']}")
-                if paper['link']:
-                    st.link_button("View Paper", paper['link'])
-            with col2:
-                st.markdown("**AI Summary:**")
-                st.write(paper['analysis'])
+    for i, s_set in enumerate(available_sets):
+        with tabs[i]:
+            # Try to load papers for this set if not in session state
+            if s_set['id'] not in st.session_state.analyzed_papers:
+                try:
+                    with open(f"results_{s_set['id']}.json", "r") as f:
+                        st.session_state.analyzed_papers[s_set['id']] = json.load(f)
+                except:
+                    # Fallback to generic results.json if it's the only one (for migration)
+                    if i == 0:
+                        try:
+                            with open("results.json", "r") as f:
+                                st.session_state.analyzed_papers[s_set['id']] = json.load(f)
+                        except:
+                            st.session_state.analyzed_papers[s_set['id']] = []
+                    else:
+                        st.session_state.analyzed_papers[s_set['id']] = []
             
-            with st.expander("Show Original Abstract"):
-                st.write(paper['abstract'])
+            papers = st.session_state.analyzed_papers[s_set['id']]
+            
+            if papers:
+                col_title, col_dl = st.columns([3, 1])
+                with col_title:
+                    st.subheader(f"Latest Results for {s_set['name']}")
+                with col_dl:
+                    pdf_output = create_pdf(papers)
+                    pdf_bytes = bytes(pdf_output)
+                    st.download_button(
+                        label="📥 Download PDF",
+                        data=pdf_bytes,
+                        file_name=f"research_{s_set['id']}_{datetime.now().strftime('%Y%m%d')}.pdf",
+                        mime="application/pdf",
+                        key=f"dl_{s_set['id']}"
+                    )
+                
+                for paper in papers:
+                    with st.container(border=True):
+                        st.markdown(f"### {paper['title']}")
+                        col1, col2 = st.columns([1, 4])
+                        with col1:
+                            st.caption(f"**Journal:**\n{paper['journal']}")
+                            if paper['fetched_at']:
+                                st.caption(f"**Fetched:**\n{paper['fetched_at']}")
+                            if paper['link']:
+                                st.link_button("View Paper", paper['link'])
+                        with col2:
+                            st.markdown("**AI Summary:**")
+                            st.write(paper['analysis'])
+                        
+                        with st.expander("Show Original Abstract"):
+                            st.write(paper['abstract'])
+            else:
+                st.info(f"No results found for {s_set['name']} yet. Automated fetch runs on {s_set.get('schedule_day', 'Sunday')}s.")
+else:
+    st.info("No search sets configured. Please enter Admin mode to add one.")
