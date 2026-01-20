@@ -209,11 +209,13 @@ def create_pdf(paper_details):
     
     # Add Unicode-capable font
     try:
-        # Using Roboto from Google Fonts for Unicode support
-        pdf.add_font("Roboto", style="", fname="https://github.com/google/fonts/raw/main/apache/roboto/static/Roboto-Regular.ttf")
-        pdf.add_font("Roboto", style="B", fname="https://github.com/google/fonts/raw/main/apache/roboto/static/Roboto-Bold.ttf")
-        pdf.add_font("Roboto", style="I", fname="https://github.com/google/fonts/raw/main/apache/roboto/static/Roboto-Italic.ttf")
-        font_name = "Roboto"
+        # Using DejaVuSans from a reliable source for broad Unicode support
+        # DejaVuSans is better for Greek/Scientific characters than Roboto in some FPDF2 environments
+        base_url = "https://github.com/reingart/pyfpdf/raw/master/font/"
+        pdf.add_font("DejaVu", style="", fname=base_url + "DejaVuSans.ttf")
+        pdf.add_font("DejaVu", style="B", fname=base_url + "DejaVuSans-Bold.ttf")
+        pdf.add_font("DejaVu", style="I", fname=base_url + "DejaVuSans-Oblique.ttf")
+        font_name = "DejaVu"
     except Exception as e:
         # Fallback to Helvetica if font loading fails
         st.warning(f"Could not load Unicode font, falling back to Helvetica. Special characters may not display correctly. Error: {e}")
@@ -228,35 +230,41 @@ def create_pdf(paper_details):
     pdf.ln(10)
     
     for i, paper in enumerate(paper_details, 1):
+        # Function to clean text for the current font
+        def clean_for_pdf(txt):
+            if font_name == "helvetica":
+                return txt.encode('latin-1', 'replace').decode('latin-1')
+            return str(txt)
+
         pdf.set_x(pdf.l_margin)
         pdf.set_font(font_name, 'B', 12)
-        pdf.cell(epw, 10, text=f"PAPER #{i}", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(epw, 10, text=clean_for_pdf(f"PAPER #{i}"), new_x="LMARGIN", new_y="NEXT")
         
         pdf.set_font(font_name, 'B', 11)
-        pdf.multi_cell(epw, 8, text=f"TITLE: {paper['title']}", new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(epw, 8, text=clean_for_pdf(f"TITLE: {paper['title']}"), new_x="LMARGIN", new_y="NEXT")
         
         pdf.set_font(font_name, 'I', 10)
-        pdf.multi_cell(epw, 7, text=f"JOURNAL: {paper.get('journal', 'Unknown Journal')}", new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(epw, 7, text=clean_for_pdf(f"JOURNAL: {paper.get('journal', 'Unknown Journal')}"), new_x="LMARGIN", new_y="NEXT")
         
         pdf.set_font(font_name, 'I', 9)
         pdf.set_text_color(0, 0, 255)
-        pdf.multi_cell(epw, 7, text=f"LINK: {paper['link']}", new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(epw, 7, text=clean_for_pdf(f"LINK: {paper['link']}"), new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0, 0, 0)
         
         pdf.set_font(font_name, 'B', 10)
-        pdf.cell(epw, 8, text="GEMINI ANALYSIS:", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(epw, 8, text=clean_for_pdf("GEMINI ANALYSIS:"), new_x="LMARGIN", new_y="NEXT")
         
         pdf.set_font(font_name, '', 10)
         analysis_text = paper.get('analysis', 'No analysis available.').replace('**', '')
-        pdf.multi_cell(epw, 6, text=analysis_text, new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(epw, 6, text=clean_for_pdf(analysis_text), new_x="LMARGIN", new_y="NEXT")
         
         pdf.ln(2)
         pdf.set_font(font_name, 'B', 9)
-        pdf.cell(epw, 7, text="ORIGINAL ABSTRACT:", new_x="LMARGIN", new_y="NEXT")
+        pdf.cell(epw, 7, text=clean_for_pdf("ORIGINAL ABSTRACT:"), new_x="LMARGIN", new_y="NEXT")
         
         pdf.set_font(font_name, '', 8)
         pdf.set_text_color(50, 50, 50)
-        pdf.multi_cell(epw, 5, text=paper['abstract'], new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(epw, 5, text=clean_for_pdf(paper['abstract']), new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0, 0, 0)
         
         pdf.ln(5)
