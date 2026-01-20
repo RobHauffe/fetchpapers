@@ -34,7 +34,7 @@ except Exception as e:
 # Load default config from file
 def load_config():
     try:
-        with open("config.json", "r") as f:
+        with open("config.json", "r", encoding='utf-8') as f:
             config = json.load(f)
             # Migration for old config format
             if "search_query" in config:
@@ -109,7 +109,7 @@ def save_config_to_github(new_config):
     r = requests.get(url, headers=headers)
     sha = r.json().get("sha") if r.status_code == 200 else None
     
-    content = base64.b64encode(json.dumps(new_config, indent=4).encode()).decode()
+    content = base64.b64encode(json.dumps(new_config, indent=4, ensure_ascii=False).encode('utf-8')).decode()
     data = {
         "message": "Update search settings via Streamlit UI",
         "content": content,
@@ -206,49 +206,57 @@ def analyze_abstract_with_retry(abstract, max_retries=3):
 def create_pdf(paper_details):
     pdf = FPDF()
     pdf.set_auto_page_break(auto=True, margin=15)
+    
+    # Add Unicode-capable font
+    try:
+        # Using Roboto from Google Fonts for Unicode support
+        pdf.add_font("Roboto", style="", fname="https://github.com/google/fonts/raw/main/apache/roboto/static/Roboto-Regular.ttf")
+        pdf.add_font("Roboto", style="B", fname="https://github.com/google/fonts/raw/main/apache/roboto/static/Roboto-Bold.ttf")
+        pdf.add_font("Roboto", style="I", fname="https://github.com/google/fonts/raw/main/apache/roboto/static/Roboto-Italic.ttf")
+        font_name = "Roboto"
+    except Exception as e:
+        # Fallback to Helvetica if font loading fails
+        st.warning(f"Could not load Unicode font, falling back to Helvetica. Special characters may not display correctly. Error: {e}")
+        font_name = "helvetica"
+
     pdf.add_page()
     epw = pdf.epw
     
-    pdf.set_font("helvetica", 'B', 16)
+    pdf.set_font(font_name, 'B', 16)
     date_str = datetime.now().strftime('%Y-%m-%d')
     pdf.cell(epw, 10, text=f"LATEST RESEARCH FINDINGS ({date_str})", align='C', new_x="LMARGIN", new_y="NEXT")
     pdf.ln(10)
     
     for i, paper in enumerate(paper_details, 1):
         pdf.set_x(pdf.l_margin)
-        pdf.set_font("helvetica", 'B', 12)
+        pdf.set_font(font_name, 'B', 12)
         pdf.cell(epw, 10, text=f"PAPER #{i}", new_x="LMARGIN", new_y="NEXT")
         
-        pdf.set_font("helvetica", 'B', 11)
-        title_text = f"TITLE: {paper['title']}".encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(epw, 8, text=title_text, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font(font_name, 'B', 11)
+        pdf.multi_cell(epw, 8, text=f"TITLE: {paper['title']}", new_x="LMARGIN", new_y="NEXT")
         
-        pdf.set_font("helvetica", 'I', 10)
-        journal_text = f"JOURNAL: {paper.get('journal', 'Unknown Journal')}".encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(epw, 7, text=journal_text, new_x="LMARGIN", new_y="NEXT")
+        pdf.set_font(font_name, 'I', 10)
+        pdf.multi_cell(epw, 7, text=f"JOURNAL: {paper.get('journal', 'Unknown Journal')}", new_x="LMARGIN", new_y="NEXT")
         
-        pdf.set_font("helvetica", 'I', 9)
+        pdf.set_font(font_name, 'I', 9)
         pdf.set_text_color(0, 0, 255)
-        link_text = f"LINK: {paper['link']}".encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(epw, 7, text=link_text, new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(epw, 7, text=f"LINK: {paper['link']}", new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0, 0, 0)
         
-        pdf.set_font("helvetica", 'B', 10)
+        pdf.set_font(font_name, 'B', 10)
         pdf.cell(epw, 8, text="GEMINI ANALYSIS:", new_x="LMARGIN", new_y="NEXT")
         
-        pdf.set_font("helvetica", '', 10)
+        pdf.set_font(font_name, '', 10)
         analysis_text = paper.get('analysis', 'No analysis available.').replace('**', '')
-        analysis_text = analysis_text.encode('latin-1', 'replace').decode('latin-1')
         pdf.multi_cell(epw, 6, text=analysis_text, new_x="LMARGIN", new_y="NEXT")
         
         pdf.ln(2)
-        pdf.set_font("helvetica", 'B', 9)
+        pdf.set_font(font_name, 'B', 9)
         pdf.cell(epw, 7, text="ORIGINAL ABSTRACT:", new_x="LMARGIN", new_y="NEXT")
         
-        pdf.set_font("helvetica", '', 8)
+        pdf.set_font(font_name, '', 8)
         pdf.set_text_color(50, 50, 50)
-        orig_abstract = paper['abstract'].encode('latin-1', 'replace').decode('latin-1')
-        pdf.multi_cell(epw, 5, text=orig_abstract, new_x="LMARGIN", new_y="NEXT")
+        pdf.multi_cell(epw, 5, text=paper['abstract'], new_x="LMARGIN", new_y="NEXT")
         pdf.set_text_color(0, 0, 0)
         
         pdf.ln(5)
@@ -434,18 +442,18 @@ if available_sets:
                 # Sanitize ID to match the filename logic in cron_fetch.py
                 safe_id = "".join([c if c.isalnum() or c in ('-', '_') else '_' for c in s_set['id']])
                 try:
-                    with open(f"results_{safe_id}.json", "r") as f:
+                    with open(f"results_{safe_id}.json", "r", encoding='utf-8') as f:
                         st.session_state.analyzed_papers[s_set['id']] = json.load(f)
                 except:
                     # Fallback to the exact set ID if the safe_id doesn't exist
                     try:
-                        with open(f"results_{s_set['id']}.json", "r") as f:
+                        with open(f"results_{s_set['id']}.json", "r", encoding='utf-8') as f:
                             st.session_state.analyzed_papers[s_set['id']] = json.load(f)
                     except:
                         # Final fallback for migration
                         if i == 0:
                             try:
-                                with open("results.json", "r") as f:
+                                with open("results.json", "r", encoding='utf-8') as f:
                                     st.session_state.analyzed_papers[s_set['id']] = json.load(f)
                             except:
                                 st.session_state.analyzed_papers[s_set['id']] = []
