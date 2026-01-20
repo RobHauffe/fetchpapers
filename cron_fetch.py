@@ -118,7 +118,9 @@ def run_automated_fetch(set_id=None, day_of_week=None):
                 continue
 
         # 5. Save Results for this specific set
-        results_filename = f"results_{s_set['id']}.json"
+        # Sanitize set_id just in case old configs have invalid characters
+        safe_id = "".join([c if c.isalnum() or c in ('-', '_') else '_' for c in s_set['id']])
+        results_filename = f"results_{safe_id}.json"
         with open(results_filename, "w") as f:
             json.dump(papers, f, indent=4)
         print(f"Successfully saved {len(papers)} papers to {results_filename}")
