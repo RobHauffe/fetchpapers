@@ -294,22 +294,24 @@ with st.sidebar:
             new_set_name = st.text_input("New Set Name", placeholder="e.g. Redox Regulation")
             if st.button("Create Set", use_container_width=True):
                 if new_set_name:
-                        new_id = new_set_name.lower().replace(" ", "_")
-                        st.session_state.config['search_sets'].append({
-                            "id": new_id,
-                            "name": new_set_name,
-                            "query": "",
-                            "days_back": 7,
-                            "max_results": 5,
-                            "schedule_day": "Sunday"
-                        })
-                        # Save to GitHub immediately so it persists on reload
-                        if save_config_to_github(st.session_state.config):
-                            st.success(f"Set '{new_set_name}' created and saved!")
-                            time.sleep(1)
-                            st.rerun()
-                        else:
-                            st.error("Set created in session, but failed to save to GitHub.")
+                    # Sanitize ID to be filename-safe (no slashes, spaces, or special characters)
+                    import re
+                    new_id = re.sub(r'[^a-zA-Z0-9_-]', '_', new_set_name.lower().replace(" ", "_"))
+                    st.session_state.config['search_sets'].append({
+                        "id": new_id,
+                        "name": new_set_name,
+                        "query": "",
+                        "days_back": 7,
+                        "max_results": 5,
+                        "schedule_day": "Sunday"
+                    })
+                    # Save to GitHub immediately so it persists on reload
+                    if save_config_to_github(st.session_state.config):
+                        st.success(f"Set '{new_set_name}' created and saved!")
+                        time.sleep(1)
+                        st.rerun()
+                    else:
+                        st.error("Set created in session, but failed to save to GitHub.")
         else:
             # Edit existing set
             s_set = next(s for s in st.session_state.config['search_sets'] if s['name'] == selected_set_name)
@@ -429,19 +431,26 @@ if available_sets:
         with tabs[i]:
             # Try to load papers for this set if not in session state
             if s_set['id'] not in st.session_state.analyzed_papers:
+                # Sanitize ID to match the filename logic in cron_fetch.py
+                safe_id = "".join([c if c.isalnum() or c in ('-', '_') else '_' for c in s_set['id']])
                 try:
-                    with open(f"results_{s_set['id']}.json", "r") as f:
+                    with open(f"results_{safe_id}.json", "r") as f:
                         st.session_state.analyzed_papers[s_set['id']] = json.load(f)
                 except:
-                    # Fallback to generic results.json if it's the only one (for migration)
-                    if i == 0:
-                        try:
-                            with open("results.json", "r") as f:
-                                st.session_state.analyzed_papers[s_set['id']] = json.load(f)
-                        except:
+                    # Fallback to the exact set ID if the safe_id doesn't exist
+                    try:
+                        with open(f"results_{s_set['id']}.json", "r") as f:
+                            st.session_state.analyzed_papers[s_set['id']] = json.load(f)
+                    except:
+                        # Final fallback for migration
+                        if i == 0:
+                            try:
+                                with open("results.json", "r") as f:
+                                    st.session_state.analyzed_papers[s_set['id']] = json.load(f)
+                            except:
+                                st.session_state.analyzed_papers[s_set['id']] = []
+                        else:
                             st.session_state.analyzed_papers[s_set['id']] = []
-                    else:
-                        st.session_state.analyzed_papers[s_set['id']] = []
             
             papers = st.session_state.analyzed_papers[s_set['id']]
             
