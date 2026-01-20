@@ -211,23 +211,27 @@ def create_pdf(paper_details):
     font_name = "helvetica"
     try:
         # Use a more robust way to load fonts by downloading them to a local temp path
-        # this avoids issues with fpdf2 not handling certain URL types or redirects
+        import tempfile
+        
         fonts = {
-            "Roboto-Regular.ttf": "https://raw.githubusercontent.com/google/fonts/main/apache/roboto/static/Roboto-Regular.ttf",
-            "Roboto-Bold.ttf": "https://raw.githubusercontent.com/google/fonts/main/apache/roboto/static/Roboto-Bold.ttf",
-            "Roboto-Italic.ttf": "https://raw.githubusercontent.com/google/fonts/main/apache/roboto/static/Roboto-Italic.ttf"
+            "Roboto-Regular.ttf": "https://github.com/google/fonts/raw/main/apache/roboto/static/Roboto-Regular.ttf",
+            "Roboto-Bold.ttf": "https://github.com/google/fonts/raw/main/apache/roboto/static/Roboto-Bold.ttf",
+            "Roboto-Italic.ttf": "https://github.com/google/fonts/raw/main/apache/roboto/static/Roboto-Italic.ttf"
         }
         
+        temp_dir = tempfile.gettempdir()
+        
         for name, url in fonts.items():
-            if not os.path.exists(name):
+            fpath = os.path.join(temp_dir, name)
+            if not os.path.exists(fpath):
                 resp = requests.get(url, timeout=10)
                 if resp.status_code == 200:
-                    with open(name, "wb") as f:
+                    with open(fpath, "wb") as f:
                         f.write(resp.content)
         
-        pdf.add_font("Roboto", style="", fname="Roboto-Regular.ttf")
-        pdf.add_font("Roboto", style="B", fname="Roboto-Bold.ttf")
-        pdf.add_font("Roboto", style="I", fname="Roboto-Italic.ttf")
+        pdf.add_font("Roboto", style="", fname=os.path.join(temp_dir, "Roboto-Regular.ttf"))
+        pdf.add_font("Roboto", style="B", fname=os.path.join(temp_dir, "Roboto-Bold.ttf"))
+        pdf.add_font("Roboto", style="I", fname=os.path.join(temp_dir, "Roboto-Italic.ttf"))
         font_name = "Roboto"
     except Exception as e:
         # Fallback to Helvetica if font loading fails
