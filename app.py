@@ -445,6 +445,7 @@ if is_admin and fetch_button:
                     st.write(f"**Title:** {paper['title']}")
                     analysis = analyze_abstract_with_retry(paper['abstract'])
                     paper['analysis'] = analysis
+                    paper['fetched_at'] = datetime.now().strftime('%Y-%m-%d %H:%M')
                     st.session_state.analyzed_papers[s_set['id']].append(paper)
                     status.update(label=f"Analysis Complete for Paper {i+1}", state="complete")
             
@@ -505,7 +506,7 @@ if available_sets:
                         col1, col2 = st.columns([1, 4])
                         with col1:
                             st.caption(f"**Journal:**\n{paper['journal']}")
-                            if paper['fetched_at']:
+                            if paper.get('fetched_at'):
                                 st.caption(f"**Fetched:**\n{paper['fetched_at']}")
                             if paper['link']:
                                 st.link_button("View Paper", paper['link'])
