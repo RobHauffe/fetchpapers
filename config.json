@@ -11,7 +11,7 @@
         {
             "id": "gpx3_in_obesity/adipose",
             "name": "GPx3 in Obesity/Adipose",
-            "query": "GPX3[Title/Abstract] AND (adipocytes[Title/Abstract] OR \"adipose tissue\"[Title/Abstract] OR obesity[Title/Abstract] OR overweight[Title/Abstract]) AND hasabstract[text]",
+            "query": "GPX3[tiab] AND (adipocytes[tiab] OR "adipose tissue"[tiab] OR obesity[tiab] OR overweight[tiab]) AND hasabstract[text]",
             "days_back": 7,
             "max_results": 5,
             "schedule_day": "Monday"
